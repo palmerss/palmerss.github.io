@@ -1,0 +1,39 @@
+<html>
+  <head>
+    <script
+        src="https://unpkg.com/algosdk@1.12.0/dist/browser/algosdk.min.js"
+        integrity="sha384-N6rRZtVTe4Rvktk9jRWB/jo+NHuNpd2Uh87V0GndIMZbWkKKZZfn1FuzORyMypsZ"
+        crossorigin="anonymous"
+        ></script>
+    <script>
+      let token = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+      let server = "http://localhost";
+      let port = "4001";
+      let headers = [];
+      let client = new algosdk.Algodv2(token, server, port, headers);
+      async function sendTxn() {
+        await AlgoSigner.connect();
+        let suggestedParams = await client.getTransactionParams().do();
+        base64txn = document.getElementById("txn").value
+        let signedTxn = await AlgoSigner.signTxn([
+                {
+                        txn: base64txn
+                }
+        ])
+        console.log(signedTxn)
+      }
+    </script>
+  </head>
+  <body>
+    <form onsubmit="sendTxn(); return false">
+      <center>
+        <label>Transaction (base64):</label>
+        <br>
+    <textarea id="txn" style="width: 30%; height: 20%">
+      iqNhbXTOAAYagKNmZWXNA+iiZnbOARIPRKNnZW6sdGVzdG5ldC12MS4womdoxCBIY7UYpLPITsgQ8i1PEIHLD3HwWaesIN7GL39w5Qk6IqJsds4BEhMspG5vdGXECFIxTnjHDIQKo3JjdsQgzxdZqet9kjmETZN6xE4+Qq5RfLDe3WMPvtacybE7BVujc25kxCCPFU77+/Oqtnap8HWJLczNsVocQVlc2MCxcsXgPvyJ3KR0eXBlo3BheQ==
+    </textarea><br>
+    <input type="submit"></input>
+      </center>
+    <form>
+  </body>
+</html>
