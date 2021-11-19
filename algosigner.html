@@ -45,63 +45,87 @@
       ]
 
       function base64ToMsgpack(input) {
-        return new Uint8Array(atob(input).split("").reduce((arr, chr) => arr.concat([chr.charCodeAt(0)]), []))
+        return new Uint8Array(atob(input).split("").reduce((arr, chr) => arr.concat([chr.charCodeAt(0)]), []));
       }
 
       function msgpackToBase64(input) {
         return btoa(input.reduce((str, byte) => str + String.fromCharCode(byte), ""));
       }
       
+      function handleError(err) {
+        console.error(err);
+      }
+
       const myAlgoConnect = new MyAlgoConnect();
       const sendTxnButton = document.getElementById("sendTxnButton");
       const signedTxnElement = document.getElementById("signedTxn");
+      const signingForm = document.forms[0];
       let algodClient = null;
+      let signedTxn = null;
       let base64SignedTxn = null;
-      async function signTxn() {
-        let txn = msgpackr.unpack(base64ToMsgpack(document.forms[0].txn.value));
+      let network = null;
+      function signTxn() {
+        let txn = msgpackr.unpack(base64ToMsgpack(signingForm.txn.value));
         if ("txn" in txn)
           txn = txn.txn;
 
-        const network = networks[document.forms[0].network.value]
-        algodClient = new algosdk.Algodv2(network.token, network.host, network.port);
-        console.log(network)
-        let params = await algodClient.getTransactionParams().do();
-        console.log(params)
-        txn["gen"] = params["genesisID"]
+        newNetwork = networks[signingForm.network.value];
+        if (network != newNetwork) {
+          network = newNetwork;
+          delete algodClient;
+          algodClient = new algosdk.Algodv2(network.token, network.host, network.port);
+        }
+        algodClient.getTransactionParams().do()
+          .then(params => {
+            const id = v=>v
+            const paramMap = {
+              gen: "genesisID",
+              gh: {
+                key: "genesisHash",
+                f: base64ToMsgpack,
+              },
+            }
+            // This is mostly for adding the genesis ID to goal's output
+            //   (would be more convenient if the keys and formats used in
+            //    the params object matched the transaction object...)
+            for (key in paramMap)
+              txn[key] = (paramMap[key].f || id)(params[paramMap[key].key || paramMap[key]]);
 
-        const base64txn = msgpackToBase64(msgpackr.pack(txn));
-        signedTxn = null;
-        base64SignedTxn = null;
-        signedTxnElement.innerHTML = "";
-        sendTxnButton.style.display = "none";
-        switch (parseInt(document.forms[0].signer.value)) {
-          case 0:
-            await AlgoSigner.connect();
-            signedTxn = (await AlgoSigner.signTxn([
-                    {
-                            txn: base64txn
-                    }
-            ]))[0];
-            base64SignedTxn = signedTxn.blob;
-            signedTxn.blob = base64ToMsgpack(base64SignedTxn)
-            break;
-          case 1:
-            let accountsSharedByUser = await myAlgoConnect.connect();
-            signedTxn = (await myAlgoConnect.signTransaction(base64txn));
-            base64SignedTxn = msgpackToBase64(signedTxn.blob);
-            break;
-          default: break;
-        }
-        if (base64SignedTxn != null) {
-            signedTxnElement.innerHTML = base64SignedTxn;
-            sendTxnButton.style.display = "inline"
-        }
+            const base64txn = msgpackToBase64(msgpackr.pack(txn));
+            signedTxn = null;
+            base64SignedTxn = null;
+            signedTxnElement.innerHTML = "";
+            sendTxnButton.style.display = "none";
+            switch (parseInt(signingForm.signer.value)) {
+              case 0:
+                return AlgoSigner.connect()
+                  .then(() => AlgoSigner.signTxn([ { txn: base64txn } ]))
+                  .then(result => {
+                    signedTxn = result[0];
+                    base64SignedTxn = signedTxn.blob;
+                    signedTxn.blob = base64ToMsgpack(base64SignedTxn);
+                  });
+              case 1:
+                return myAlgoConnect.connect()
+                  .then(accountsSharedByUser => myAlgoConnect.signTransaction(base64txn))
+                  .then(result => {
+                    signedTxn = result;
+                    base64SignedTxn = msgpackToBase64(signedTxn.blob);
+                  });
+              default:
+                return Promise.reject("Unknown signer");
+            }
+          }).then(() => {
+                signedTxnElement.innerHTML = base64SignedTxn;
+                sendTxnButton.style.display = "inline";
+          }).catch(err => handleError(err));
       }
-      async function sendTxn() {
+      function sendTxn() {
         if (signedTxn == null)
           return;
-        let response = await algodClient.sendRawTransaction(signedTxn.blob).do()
-        console.log(response)
+        algodClient.sendRawTransaction(signedTxn.blob).do()
+          .then(response => console.log(response))
+          .catch(err => handleError(err));
       }
     </script>
   </body>
