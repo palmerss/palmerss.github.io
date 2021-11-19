@@ -32,6 +32,7 @@
       const signedTxnElement = document.getElementById("signedTxn");
       let base64SignedTxn = null;
       async function signTxn() {
+        await AlgoSigner.connect();
         let txn = msgpackr.unpack(AlgoSigner.encoding.base64ToMsgpack(document.forms[0].txn.value));
         if ("txn" in txn)
           txn = txn.txn;
@@ -50,7 +51,6 @@
         sendTxnButton.style.display = "none";
         switch (parseInt(document.forms[0].signer.value)) {
           case 0:
-            await AlgoSigner.connect();
             signedTxn = (await AlgoSigner.signTxn([
                     {
                             txn: base64txn
