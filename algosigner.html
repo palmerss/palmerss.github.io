@@ -27,42 +27,70 @@
       <input type="button" value="Send" id="sendTxnButton" onclick="sendTxn()" style="display: none"></input>
     </div>
     <script crossorigin="anonymous">
+      const networks = [
+        {
+          host: "https://testnet-algorand.api.purestake.io/ps2",
+          port: '',
+          token: {
+            'X-API-Key': "HoCY9Z8KbU2gV2oQkLCPj8GESBP83j271c3gs5iF"
+          }
+        },
+        /*
+        {
+          host: "https://mainnet-algorand.api.purestake.io/ps2",
+          port: "",
+          token: {
+            "X-API-Key": "HoCY9Z8KbU2gV2oQkLCPj8GESBP83j271c3gs5iF"
+          },
+        }
+        */
+      ]
+
+      function base64ToMsgpack(input) {
+        return new Uint8Array(atob(input).split("").reduce((arr, chr) => arr.concat([chr.charCodeAt(0)]), []))
+      }
+
+      function msgpackToBase64(input) {
+        return btoa(input.reduce((str, byte) => str + String.fromCharCode(byte), ""));
+      }
+      
       const myAlgoConnect = new MyAlgoConnect();
       const sendTxnButton = document.getElementById("sendTxnButton");
       const signedTxnElement = document.getElementById("signedTxn");
+      let algodClient = null;
       let base64SignedTxn = null;
       async function signTxn() {
-        await AlgoSigner.connect();
-        let txn = msgpackr.unpack(AlgoSigner.encoding.base64ToMsgpack(document.forms[0].txn.value));
+        let txn = msgpackr.unpack(base64ToMsgpack(document.forms[0].txn.value));
         if ("txn" in txn)
           txn = txn.txn;
 
-        const network = ["TestNet", "MainNet"][document.forms[0].network.value]
-        let params = await AlgoSigner.algod({
-          ledger: network,
-          path: '/v2/transactions/params',
-        })
-        txn["gen"] = params["genesis-id"]
+        const network = networks[document.forms[0].network.value]
+        algodClient = new algosdk.Algodv2(network.token, network.host, network.port);
+        console.log(network)
+        let params = await algodClient.getTransactionParams().do();
+        console.log(params)
+        txn["gen"] = params["genesisID"]
 
-        const base64txn = AlgoSigner.encoding.msgpackToBase64(msgpackr.pack(txn));
+        const base64txn = msgpackToBase64(msgpackr.pack(txn));
         signedTxn = null;
         base64SignedTxn = null;
         signedTxnElement.innerHTML = "";
         sendTxnButton.style.display = "none";
         switch (parseInt(document.forms[0].signer.value)) {
           case 0:
+            await AlgoSigner.connect();
             signedTxn = (await AlgoSigner.signTxn([
                     {
                             txn: base64txn
                     }
             ]))[0];
             base64SignedTxn = signedTxn.blob;
-            signedTxn.blob = AlgoSigner.encoding.base64ToMsgpack(base64SignedTxn)
+            signedTxn.blob = base64ToMsgpack(base64SignedTxn)
             break;
           case 1:
             let accountsSharedByUser = await myAlgoConnect.connect();
             signedTxn = (await myAlgoConnect.signTransaction(base64txn));
-            base64SignedTxn = AlgoSigner.encoding.msgpackToBase64(signedTxn.blob);
+            base64SignedTxn = msgpackToBase64(signedTxn.blob);
             break;
           default: break;
         }
@@ -74,12 +102,8 @@
       async function sendTxn() {
         if (signedTxn == null)
           return;
-        const network = ["TestNet", "MainNet"][document.forms[0].network.value]
-        AlgoSigner.send({
-            ledger: network,
-            tx: base64SignedTxn
-        }).then(response => console.log(response))
-          .catch(err => console.error(err))
+        let response = await algodClient.sendRawTransaction(signedTxn.blob).do()
+        console.log(response)
       }
     </script>
   </body>
