@@ -27,23 +27,26 @@
       <input type="button" value="Send" id="sendTxnButton" onclick="sendTxn()" style="display: none"></input>
     </div>
     <script crossorigin="anonymous">
-      const token = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
-      const server = "http://localhost";
-      const port = "4001";
-      const headers = [];
-      const algodClient = new algosdk.Algodv2(token, server, port, headers);
       const myAlgoConnect = new MyAlgoConnect();
       const sendTxnButton = document.getElementById("sendTxnButton");
+      const signedTxnElement = document.getElementById("signedTxn");
       let base64SignedTxn = null;
       async function signTxn() {
         let txn = msgpackr.unpack(AlgoSigner.encoding.base64ToMsgpack(document.forms[0].txn.value));
         if ("txn" in txn)
           txn = txn.txn;
-        if (document.forms[0].network.value == 0)
-          txn["gen"] = "testnet-v1.0"
+
+        const network = ["TestNet", "MainNet"][document.forms[0].network.value]
+        let params = await AlgoSigner.algod({
+          ledger: network,
+          path: '/v2/transactions/params',
+        })
+        txn["gen"] = params["genesis-id"]
+
         const base64txn = AlgoSigner.encoding.msgpackToBase64(msgpackr.pack(txn));
         signedTxn = null;
         base64SignedTxn = null;
+        signedTxnElement.innerHTML = "";
         sendTxnButton.style.display = "none";
         switch (parseInt(document.forms[0].signer.value)) {
           case 0:
@@ -64,7 +67,7 @@
           default: break;
         }
         if (base64SignedTxn != null) {
-            document.getElementById("signedTxn").innerHTML = base64SignedTxn;
+            signedTxnElement.innerHTML = base64SignedTxn;
             sendTxnButton.style.display = "inline"
         }
       }
@@ -72,17 +75,10 @@
         if (signedTxn == null)
           return;
         const network = ["TestNet", "MainNet"][document.forms[0].network.value]
-        AlgoSigner.algod({
-          ledger: network,
-          path: '/v2/transactions/params',
-        }).then(response => {
-            console.log(response);
-            return AlgoSigner.send({
-              ledger: network,
-              tx: base64SignedTxn
-            })
-          })
-          .then(response => console.log(response))
+        AlgoSigner.send({
+            ledger: network,
+            tx: base64SignedTxn
+        }).then(response => console.log(response))
           .catch(err => console.error(err))
       }
     </script>
