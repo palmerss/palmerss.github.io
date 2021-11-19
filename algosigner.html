@@ -33,10 +33,11 @@
       const sendTxnButton = document.getElementById("sendTxnButton");
       let base64SignedTxn = null;
       async function signTxn() {
-        const base64txn = AlgoSigner.encoding.msgpackToBase64(msgpackr.pack(msgpackr.unpack(AlgoSigner.encoding.base64ToMsgpack(document.forms[0].txn.value)).txn))
+        //const base64txn = AlgoSigner.encoding.msgpackToBase64(msgpackr.pack(msgpackr.unpack(AlgoSigner.encoding.base64ToMsgpack(document.forms[0].txn.value))))
+        const base64txn = document.forms[0].txn.value
         signedTxn = null;
         base64SignedTxn = null;
-        sendTxnButton.display = "none";
+        sendTxnButton.style.display = "none";
         switch (parseInt(document.forms[0].signer.value)) {
           case 0:
             await AlgoSigner.connect();
@@ -57,7 +58,7 @@
         }
         if (base64SignedTxn != null) {
             document.getElementById("signedTxn").innerHTML = base64SignedTxn;
-            document.getElementById("sendTxnButton").style.display = "inline"
+            sendTxnButton.style.display = "inline"
         }
       }
       async function sendTxn() {
