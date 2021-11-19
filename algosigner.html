@@ -33,8 +33,10 @@
       const sendTxnButton = document.getElementById("sendTxnButton");
       let base64SignedTxn = null;
       async function signTxn() {
-        //const base64txn = AlgoSigner.encoding.msgpackToBase64(msgpackr.pack(msgpackr.unpack(AlgoSigner.encoding.base64ToMsgpack(document.forms[0].txn.value))))
-        const base64txn = document.forms[0].txn.value
+        let txn = msgpackr.unpack(AlgoSigner.encoding.base64ToMsgpack(document.forms[0].txn.value));
+        if ("txn" in txn)
+          txn = txn.txn;
+        const base64txn = AlgoSigner.encoding.msgpackToBase64(msgpackr.pack(txn));
         signedTxn = null;
         base64SignedTxn = null;
         sendTxnButton.style.display = "none";
