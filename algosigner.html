@@ -36,6 +36,7 @@
         let txn = msgpackr.unpack(AlgoSigner.encoding.base64ToMsgpack(document.forms[0].txn.value));
         if ("txn" in txn)
           txn = txn.txn;
+        txn["gen"] = "testnet-v1.0"
         const base64txn = AlgoSigner.encoding.msgpackToBase64(msgpackr.pack(txn));
         signedTxn = null;
         base64SignedTxn = null;
