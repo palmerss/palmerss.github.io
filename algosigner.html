@@ -103,6 +103,24 @@
         return a
       }
 
+      function algoSignerHandler(txns) {
+        return AlgoSigner.connect()
+          .then(() => AlgoSigner.signTxn(txns.map(t => ({txn: t}))))
+          .then(result => {
+            base64SignedTxns = result.map(t => t.blob);
+            signedTxns = result.map(t => base64Decode(t.blob))
+          });
+      }
+
+      function myAlgoHandler(txns) {
+        return myAlgoConnect.connect()
+          .then(accounts => myAlgoConnect.signTransaction(txns))
+          .then(result => {
+            signedTxns = result.map(t => t.blob)
+            base64SignedTxns = result.map(t => base64Encode(t.blob));
+          });
+      }
+
       function signTxn() {
         newNetwork = networks[signingForm.network.value];
         if (network != newNetwork) {
@@ -117,37 +135,20 @@
         sentTxn.innerHTML = "";
         sendTxnButton.style.display = "none";
 
-        // Unpack transaction(s) and convert to array of transaction objects
         const txns = signingForm.txn.value.split(",")
                        .map(t => algosdk.decodeObj(base64Decode(t)))
                        .map(t => ("txn" in t) ? t.txn : t)
                        .map(t => algosdk.encodeObj(t));
-        // Pack each transaction individually
         prepareTransactions(txns)
           .then(txns => {
-            switch (parseInt(signingForm.signer.value)) {
-              case 0:
-                return AlgoSigner.connect()
-                  .then(() => AlgoSigner.signTxn(txns.map(t => ({txn: t}))))
-                  .then(result => {
-                    base64SignedTxns = result.map(t => t.blob);
-                    signedTxns = result.map(t => base64Decode(t.blob))
-                  });
-              case 1:
-                return myAlgoConnect.connect()
-                  .then(accounts => myAlgoConnect.signTransaction(txns))
-                  .then(result => {
-                    signedTxns = result.map(t => t.blob)
-                    base64SignedTxns = result.map(t => base64Encode(t.blob));
-                  });
-              default:
-                return Promise.reject("Unknown signer");
-            }
+            const handlers = [ algoSignerHandler, myAlgoHandler ];
+            return handlers[signingForm.signer.value](txns);
           }).then(() => {
               signedTxn.innerHTML = base64SignedTxns;
               sendTxnButton.style.display = "inline";
           }).catch(err => handleError(err));
       }
+
       function sendTxn() {
         if (signedTxns == null)
           return;
