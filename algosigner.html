@@ -30,6 +30,7 @@
     <script crossorigin="anonymous">
       const networks = [
         {
+          name: "TestNet",
           host: "https://testnet-algorand.api.purestake.io/ps2",
           port: '',
           token: {
@@ -37,11 +38,34 @@
           }
         },
         {
+          name: "MainNet",
           host: "https://mainnet-algorand.api.purestake.io/ps2",
           port: "",
           token: {
             "X-API-Key": "HoCY9Z8KbU2gV2oQkLCPj8GESBP83j271c3gs5iF"
           },
+        }
+      ]
+      const handlers = [
+        {
+          name: "AlgoSigner",
+          func: txns =>
+            (AlgoSigner.connect()
+              .then(() => AlgoSigner.signTxn(txns.map(t => ({txn: t}))))
+              .then(result => {
+                signedTxns = result.map(t => base64Decode(t.blob))
+                base64SignedTxns = result.map(t => t.blob);
+              })),
+        },
+        {
+          name: "MyAlgo",
+          func: txns =>
+            (myAlgoConnect.connect()
+              .then(accounts => myAlgoConnect.signTransaction(txns))
+              .then(result => {
+                signedTxns = result.map(t => t.blob)
+                base64SignedTxns = result.map(t => base64Encode(t.blob));
+              })),
         }
       ]
 
@@ -70,8 +94,7 @@
 
         //   Apparently there are a number of different formats for everything
         // so this function is a mess
-        const a = 
-          (algodClient.getTransactionParams().do()
+        return (algodClient.getTransactionParams().do()
             .then(params => {
               txns = txns.map(t => algosdk.decodeObj(t))
               for (i in txns) {
@@ -103,25 +126,6 @@
               }
               return dtxns.map(dtxn => base64Encode(algosdk.encodeUnsignedTransaction(dtxn)));
             }))
-        return a
-      }
-
-      function algoSignerHandler(txns) {
-        return AlgoSigner.connect()
-          .then(() => AlgoSigner.signTxn(txns.map(t => ({txn: t}))))
-          .then(result => {
-            base64SignedTxns = result.map(t => t.blob);
-            signedTxns = result.map(t => base64Decode(t.blob))
-          });
-      }
-
-      function myAlgoHandler(txns) {
-        return myAlgoConnect.connect()
-          .then(accounts => myAlgoConnect.signTransaction(txns))
-          .then(result => {
-            signedTxns = result.map(t => t.blob)
-            base64SignedTxns = result.map(t => base64Encode(t.blob));
-          });
       }
 
       function signTxn() {
@@ -143,10 +147,8 @@
                        .map(t => ("txn" in t) ? t.txn : t)
                        .map(t => algosdk.encodeObj(t));
         prepareTransactions(txns)
-          .then(txns => {
-            const handlers = [ algoSignerHandler, myAlgoHandler ];
-            return handlers[signingForm.signer.value](txns);
-          }).then(() => {
+          .then(txns => handlers[signingForm.signer.value].func(txns))
+          .then(() => {
               signedTxn.innerHTML = base64SignedTxns;
               sendTxnButton.style.display = "inline";
           }).catch(err => handleError(err));
