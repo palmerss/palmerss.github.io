@@ -24,6 +24,8 @@
       <p id="signedTxn" style="overflow-wrap: anywhere">
       </p>
       <input type="button" value="Send" id="sendTxnButton" onclick="sendTxn()" style="display: none"></input>
+      <p id="sentTxn" style="overflow-wrap: anywhere">
+      </p>
     </div>
     <script crossorigin="anonymous">
       const networks = [
@@ -43,21 +45,19 @@
         }
       ]
 
-      function base64ToMsgpack(input) {
+      function base64Decode(input) {
         return new Uint8Array(atob(input).split("").reduce((arr, chr) => arr.concat([chr.charCodeAt(0)]), []));
       }
 
-      function msgpackToBase64(input) {
+      function base64Encode(input) {
         return btoa(input.reduce((str, byte) => str + String.fromCharCode(byte), ""));
       }
       
       function handleError(err) {
-        console.error(err);
+        sentTxn.innerHTML = "ERROR: " + (err.message || err)
       }
 
       const myAlgoConnect = new MyAlgoConnect();
-      const sendTxnButton = document.getElementById("sendTxnButton");
-      const signedTxnElement = document.getElementById("signedTxn");
       const signingForm = document.forms[0];
       let algodClient = null;
       let signedTxns = null;
@@ -98,19 +98,12 @@
                 for (i in dtxns)
                   dtxns[i].group = groupID;
               }
-              return dtxns.map(dtxn => msgpackToBase64(algosdk.encodeUnsignedTransaction(dtxn)));
+              return dtxns.map(dtxn => base64Encode(algosdk.encodeUnsignedTransaction(dtxn)));
             }))
         return a
       }
 
       function signTxn() {
-        // Unpack transaction(s) and convert to array of transaction objects
-        let txn = algosdk.decodeObj(base64ToMsgpack(signingForm.txn.value));
-        if ("txn" in txn)
-          txn = [txn.txn];
-        else if (!(txn instanceof Array))
-          txn = [txn];
-
         newNetwork = networks[signingForm.network.value];
         if (network != newNetwork) {
           network = newNetwork;
@@ -118,34 +111,40 @@
           algodClient = new algosdk.Algodv2(network.token, network.host, network.port);
         }
 
+        signedTxns = null;
+        base64SignedTxns = null;
+        signedTxn.innerHTML = "";
+        sentTxn.innerHTML = "";
+        sendTxnButton.style.display = "none";
+
+        // Unpack transaction(s) and convert to array of transaction objects
+        const txns = signingForm.txn.value.split(",")
+                       .map(t => algosdk.decodeObj(base64Decode(t)))
+                       .map(t => ("txn" in t) ? t.txn : t)
+                       .map(t => algosdk.encodeObj(t));
         // Pack each transaction individually
-        let txns = txn.map(t => algosdk.encodeObj(t));
         prepareTransactions(txns)
           .then(txns => {
-            signedTxn = null;
-            base64SignedTxn = null;
-            signedTxnElement.innerHTML = "";
-            sendTxnButton.style.display = "none";
             switch (parseInt(signingForm.signer.value)) {
               case 0:
                 return AlgoSigner.connect()
                   .then(() => AlgoSigner.signTxn(txns.map(t => ({txn: t}))))
                   .then(result => {
                     base64SignedTxns = result.map(t => t.blob);
-                    signedTxns = result.map(t => base64ToMsgpack(t.blob))
+                    signedTxns = result.map(t => base64Decode(t.blob))
                   });
               case 1:
                 return myAlgoConnect.connect()
                   .then(accounts => myAlgoConnect.signTransaction(txns))
                   .then(result => {
                     signedTxns = result.map(t => t.blob)
-                    base64SignedTxns = result.map(t => msgpackToBase64(t.blob));
+                    base64SignedTxns = result.map(t => base64Encode(t.blob));
                   });
               default:
                 return Promise.reject("Unknown signer");
             }
           }).then(() => {
-              signedTxnElement.innerHTML = base64SignedTxns;
+              signedTxn.innerHTML = base64SignedTxns;
               sendTxnButton.style.display = "inline";
           }).catch(err => handleError(err));
       }
@@ -153,7 +152,7 @@
         if (signedTxns == null)
           return;
         algodClient.sendRawTransaction(signedTxns).do()
-          .then(response => console.log(response))
+          .then(response => sentTxn.innerHTML = "Success! Txn: " + response.txId)
           .catch(err => handleError(err));
       }
     </script>
