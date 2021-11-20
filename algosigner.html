@@ -54,7 +54,8 @@
       }
       
       function handleError(err) {
-        sentTxn.innerHTML = "ERROR: " + (err.message || err)
+        console.error(err);
+        sentTxn.innerHTML = "ERROR: " + (err.message || err);
       }
 
       const myAlgoConnect = new MyAlgoConnect();
@@ -89,8 +90,10 @@
               for (i in dtxns) {
                 if (dtxns[i].lease.length == 0)
                   delete dtxns[i].lease
-                dtxns[i].from = algosdk.encodeAddress(dtxns[i].from.publicKey)
-                dtxns[i].to = algosdk.encodeAddress(dtxns[i].to.publicKey)
+                if (dtxns[i].from instanceof Object)
+                  dtxns[i].from = algosdk.encodeAddress(dtxns[i].from.publicKey)
+                if (dtxns[i].to instanceof Object)
+                  dtxns[i].to = algosdk.encodeAddress(dtxns[i].to.publicKey)
               }
               dtxns = dtxns.map(dtxn => new algosdk.Transaction(dtxn))
               if (dtxns.length > 1) {
