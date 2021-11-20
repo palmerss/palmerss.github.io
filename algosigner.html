@@ -6,7 +6,6 @@
         crossorigin="anonymous"
         ></script>
     <script src="/myalgo.min.js" crossorigin="anonymous"></script>
-    <script src="/msgpackr.js" crossorigin="anonymous"></script>
   </head>
   <body>
     <div style="margin: auto; width: 30%">
@@ -61,13 +60,56 @@
       const signedTxnElement = document.getElementById("signedTxn");
       const signingForm = document.forms[0];
       let algodClient = null;
-      let signedTxn = null;
-      let base64SignedTxn = null;
+      let signedTxns = null;
+      let base64SignedTxns = null;
       let network = null;
+
+      function prepareTransactions(txns) {
+        //   Add suggested params and compute group ID (if applicable)
+
+        //   Apparently there are a number of different formats for everything
+        // so this function is a mess
+        const a = 
+          (algodClient.getTransactionParams().do()
+            .then(params => {
+              txns = txns.map(t => algosdk.decodeObj(t))
+              for (i in txns) {
+                if (typeof(txns[i].rcv) === "string")
+                  txns[i].rcv = algosdk.decodeAddress(txns[i].rcv).publicKey
+                if (typeof(txns[i].snd) === "string")
+                  txns[i].snd = algosdk.decodeAddress(txns[i].snd).publicKey
+              }
+              txns = txns.map(t => algosdk.encodeObj(t))
+              let dtxns = txns.map(txn => ({
+                suggestedParams: {
+                  ...params,
+                },
+                ...algosdk.decodeUnsignedTransaction(txn)
+              }))
+              for (i in dtxns) {
+                if (dtxns[i].lease.length == 0)
+                  delete dtxns[i].lease
+                dtxns[i].from = algosdk.encodeAddress(dtxns[i].from.publicKey)
+                dtxns[i].to = algosdk.encodeAddress(dtxns[i].to.publicKey)
+              }
+              dtxns = dtxns.map(dtxn => new algosdk.Transaction(dtxn))
+              if (dtxns.length > 1) {
+                const groupID = algosdk.computeGroupID(dtxns);
+                for (i in dtxns)
+                  dtxns[i].group = groupID;
+              }
+              return dtxns.map(dtxn => msgpackToBase64(algosdk.encodeUnsignedTransaction(dtxn)));
+            }))
+        return a
+      }
+
       function signTxn() {
-        let txn = msgpackr.unpack(base64ToMsgpack(signingForm.txn.value));
+        // Unpack transaction(s) and convert to array of transaction objects
+        let txn = algosdk.decodeObj(base64ToMsgpack(signingForm.txn.value));
         if ("txn" in txn)
-          txn = txn.txn;
+          txn = [txn.txn];
+        else if (!(txn instanceof Array))
+          txn = [txn];
 
         newNetwork = networks[signingForm.network.value];
         if (network != newNetwork) {
@@ -75,23 +117,11 @@
           delete algodClient;
           algodClient = new algosdk.Algodv2(network.token, network.host, network.port);
         }
-        algodClient.getTransactionParams().do()
-          .then(params => {
-            const id = v=>v
-            const paramMap = {
-              gen: "genesisID",
-              gh: {
-                key: "genesisHash",
-                f: base64ToMsgpack,
-              },
-            }
-            // This is mostly for adding the genesis ID to goal's output
-            //   (would be more convenient if the keys and formats used in
-            //    the params object matched the transaction object...)
-            for (key in paramMap)
-              txn[key] = (paramMap[key].f || id)(params[paramMap[key].key || paramMap[key]]);
 
-            const base64txn = msgpackToBase64(msgpackr.pack(txn));
+        // Pack each transaction individually
+        let txns = txn.map(t => algosdk.encodeObj(t));
+        prepareTransactions(txns)
+          .then(txns => {
             signedTxn = null;
             base64SignedTxn = null;
             signedTxnElement.innerHTML = "";
@@ -99,31 +129,30 @@
             switch (parseInt(signingForm.signer.value)) {
               case 0:
                 return AlgoSigner.connect()
-                  .then(() => AlgoSigner.signTxn([ { txn: base64txn } ]))
+                  .then(() => AlgoSigner.signTxn(txns.map(t => ({txn: t}))))
                   .then(result => {
-                    signedTxn = result[0];
-                    base64SignedTxn = signedTxn.blob;
-                    signedTxn.blob = base64ToMsgpack(base64SignedTxn);
+                    base64SignedTxns = result.map(t => t.blob);
+                    signedTxns = result.map(t => base64ToMsgpack(t.blob))
                   });
               case 1:
                 return myAlgoConnect.connect()
-                  .then(accountsSharedByUser => myAlgoConnect.signTransaction(base64txn))
+                  .then(accounts => myAlgoConnect.signTransaction(txns))
                   .then(result => {
-                    signedTxn = result;
-                    base64SignedTxn = msgpackToBase64(signedTxn.blob);
+                    signedTxns = result.map(t => t.blob)
+                    base64SignedTxns = result.map(t => msgpackToBase64(t.blob));
                   });
               default:
                 return Promise.reject("Unknown signer");
             }
           }).then(() => {
-                signedTxnElement.innerHTML = base64SignedTxn;
-                sendTxnButton.style.display = "inline";
+              signedTxnElement.innerHTML = base64SignedTxns;
+              sendTxnButton.style.display = "inline";
           }).catch(err => handleError(err));
       }
       function sendTxn() {
-        if (signedTxn == null)
+        if (signedTxns == null)
           return;
-        algodClient.sendRawTransaction(signedTxn.blob).do()
+        algodClient.sendRawTransaction(signedTxns).do()
           .then(response => console.log(response))
           .catch(err => handleError(err));
       }
